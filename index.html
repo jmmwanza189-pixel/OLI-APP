@@ -1,0 +1,2155 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <link rel="manifest" href="./manifest.json" />
+<meta name="theme-color" content="#133C8B" />
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    });
+  }
+</script>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EMIMO — Administration & Départements</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- React & ReactDOM -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <!-- Babel pour JSX -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- QRCodeJS pour les cartes de fidèles -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <!-- Firebase Compat (App + Firestore) pour compatibilité directe avec Babel/JSX -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <!-- Google Fonts Inter -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+    @keyframes iosSpin {
+      0% { opacity: 1; }
+      100% { opacity: 0.15; }
+    }
+    .ios-spinner div {
+      transform-origin: 16px 16px;
+      animation: iosSpin 1s linear infinite;
+    }
+    .ios-spinner div:after {
+      content: " ";
+      display: block;
+      position: absolute;
+      top: 2px;
+      left: 14.5px;
+      width: 3px;
+      height: 8px;
+      border-radius: 20%;
+      background: #ffffff;
+    }
+    .ios-spinner div:nth-child(1) { transform: rotate(0deg); animation-delay: -0.916s; }
+    .ios-spinner div:nth-child(2) { transform: rotate(30deg); animation-delay: -0.833s; }
+    .ios-spinner div:nth-child(3) { transform: rotate(60deg); animation-delay: -0.75s; }
+    .ios-spinner div:nth-child(4) { transform: rotate(90deg); animation-delay: -0.666s; }
+    .ios-spinner div:nth-child(5) { transform: rotate(120deg); animation-delay: -0.583s; }
+    .ios-spinner div:nth-child(6) { transform: rotate(150deg); animation-delay: -0.5s; }
+    .ios-spinner div:nth-child(7) { transform: rotate(180deg); animation-delay: -0.416s; }
+    .ios-spinner div:nth-child(8) { transform: rotate(210deg); animation-delay: -0.333s; }
+    .ios-spinner div:nth-child(9) { transform: rotate(240deg); animation-delay: -0.25s; }
+    .ios-spinner div:nth-child(10) { transform: rotate(270deg); animation-delay: -0.166s; }
+    .ios-spinner div:nth-child(11) { transform: rotate(300deg); animation-delay: -0.083s; }
+    .ios-spinner div:nth-child(12) { transform: rotate(330deg); animation-delay: 0s; }
+
+    @media print {
+      body * { visibility: hidden; }
+      #zone-impression-carte, #zone-impression-carte *,
+      #zone-impression-rapport, #zone-impression-rapport * { visibility: visible; }
+      #zone-impression-carte {
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        box-shadow: none !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      #zone-impression-rapport {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        background: white !important;
+        padding: 20px !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      .no-print { display: none !important; }
+    }
+  </style>
+</head>
+<body class="bg-[#F2F3F7] text-slate-900 antialiased">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // ==================== CONFIGURATION FIREBASE (OLI-APP-FD52C) ====================
+    const firebaseConfig = {
+      apiKey: "AIzaSyBYac4NxuqbQ4dQyIRHgtnIYErse2uxk4s",
+      authDomain: "oli-app-fd52c.firebaseapp.com",
+      projectId: "oli-app-fd52c",
+      storageBucket: "oli-app-fd52c.firebasestorage.app",
+      messagingSenderId: "198823043973",
+      appId: "1:198823043973:web:fd2e7288cb2d06a3551aec"
+    };
+
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+    const db = firebase.firestore();
+
+    const BLOCS = [
+      { id: 'Bloc Schekinah', short: 'Schekinah', code: 'BLOC 01', color: 'text-[#133C8B]', bg: 'bg-blue-50 text-[#133C8B]', bar: 'bg-[#133C8B]' },
+      { id: "Bloc Chandelier d'Or", short: "Chandelier d'Or", code: 'BLOC 02', color: 'text-amber-700', bg: 'bg-amber-50 text-amber-700', bar: 'bg-amber-500' },
+      { id: 'Bloc Chambre Haute', short: 'Chambre Haute', code: 'BLOC 03', color: 'text-[#1D70B8]', bg: 'bg-sky-50 text-[#1D70B8]', bar: 'bg-[#1D70B8]' }
+    ];
+
+    const DEPARTEMENTS = [
+      'Aucun (Fidèle)',
+      'MUSIQUE',
+      'Protocole',
+      'Intercession',
+      'JMC',
+      'Mamans',
+      'Évangélisation',
+      'Diaconat'
+    ];
+
+    const TYPES_CULTES = [
+      'Culte Dominical ',
+      'Culte JMC',
+      'Culte de Mercredi',
+      'Culte de Vendredi',
+      'Intercession',
+      'Rencontre Bloc'
+    ];
+
+    const INITIAL_MEMBRES = [
+      {
+        id: '1',
+        matricule: 'EM-2026-0001',
+        nom_complet: 'Jonas JM',
+        telephone: '+243 970 000 000',
+        quartier: 'Commune de kikula',
+        bloc: 'Bloc Chambre Haute',
+        departement: 'Intercession',
+        etat_civil: 'Marié(e)',
+        enfants: 2,
+        baptise: true,
+        date_inscription: '2026-10-12',
+        photo: null
+      },
+      {
+        id: '2',
+        matricule: 'EM-2026-0002',
+        nom_complet: 'Bryan M',
+        telephone: '+243 990 000 000',
+        quartier: 'Commune de Kikula',
+        bloc: 'Bloc Schekinah',
+        departement: 'Chorale / Louange',
+        etat_civil: 'Marié(e)',
+        enfants: 3,
+        baptise: true,
+        date_inscription: '2026-11-03',
+        photo: null
+      },
+      {
+        id: '3',
+        matricule: 'EM-2026-0003',
+        nom_complet: 'Bright U',
+        telephone: '+243 800 000 000',
+        quartier: 'Quartier Centre',
+        bloc: "Bloc Chandelier d'Or",
+        departement: 'Protocole',
+        etat_civil: 'Célibataire',
+        enfants: 0,
+        baptise: true,
+        date_inscription: '2026-11-10',
+        photo: null
+      }
+    ];
+
+    function QrCodeBox({ value, size = 80 }) {
+      const qrRef = useRef(null);
+
+      useEffect(() => {
+        if (!qrRef.current || !window.QRCode) return;
+        qrRef.current.innerHTML = '';
+        new window.QRCode(qrRef.current, {
+          text: value,
+          width: size,
+          height: size,
+          colorDark: '#0F2C67',
+          colorLight: '#ffffff',
+          correctLevel: window.QRCode.CorrectLevel.M
+        });
+      }, [value, size]);
+
+      return <div ref={qrRef} className="bg-white p-1.5 rounded-xl inline-block shadow-xs" />;
+    }
+
+    function App() {
+      const [splash, setSplash] = useState(true);
+      const [membres, setMembres] = useState([]);
+      const [presences, setPresences] = useState({});
+      const [syncStatus, setSyncStatus] = useState('Connexion Firestore...');
+
+      const [logoUrl, setLogoUrl] = useState(() => {
+        return localStorage.getItem('emimo_logo_v4') || './20230115_213735.png';
+      });
+      const [logoErreur, setLogoErreur] = useState(false);
+
+      // Session : null | { role: 'admin' } | { role: 'groupe', type: 'bloc' | 'departement', nom: string }
+      const [session, setSession] = useState(null);
+      const [modeConnexion, setModeConnexion] = useState('groupe');
+      const [typeGroupeLogin, setTypeGroupeLogin] = useState('departement');
+      const [nomGroupeLogin, setNomGroupeLogin] = useState(DEPARTEMENTS[1]);
+      const [codeAccesInput, setCodeAccesInput] = useState('');
+      const [erreurLogin, setErreurLogin] = useState('');
+
+      const [ongletAdmin, setOngletAdmin] = useState('bilan');
+      const [ongletGroupe, setOngletGroupe] = useState('membres');
+      const [groupeInspecteAdmin, setGroupeInspecteAdmin] = useState(null);
+
+      const [recherche, setRecherche] = useState('');
+      const [filtreBloc, setFiltreBloc] = useState('Tous');
+      const [filtreDept, setFiltreDept] = useState('Tous');
+      const [filtreBaptise, setFiltreBaptise] = useState(false);
+
+      const [dateCulte, setDateCulte] = useState(() => new Date().toISOString().split('T')[0]);
+      const [typeCulte, setTypeCulte] = useState(TYPES_CULTES[0]);
+      const [recherchePointage, setRecherchePointage] = useState('');
+
+      const [modalAjout, setModalAjout] = useState(false);
+      const [modalStockage, setModalStockage] = useState(false);
+      const [membreActif, setMembreActif] = useState(null);
+      const [carteMembre, setCarteMembre] = useState(null);
+      const [modeEdition, setModeEdition] = useState(false);
+      const [editData, setEditData] = useState({});
+
+      const [erreurDoublon, setErreurDoublon] = useState('');
+      const [toast, setToast] = useState('');
+
+      const emptyForm = {
+        nom_complet: '',
+        telephone: '',
+        quartier: '',
+        bloc: 'Bloc Schekinah',
+        departement: 'Aucun (Fidèle)',
+        etat_civil: 'Célibataire',
+        enfants: 0,
+        baptise: false,
+        photo: null
+      };
+
+      const [formData, setFormData] = useState(emptyForm);
+
+      const photoRef = useRef(null);
+      const editPhotoRef = useRef(null);
+      const logoRef = useRef(null);
+      const importJsonRef = useRef(null);
+
+      useEffect(() => {
+        const timer = setTimeout(() => setSplash(false), 1500);
+        return () => clearTimeout(timer);
+      }, []);
+
+      // ==================== ÉCOUTE EN TEMPS RÉEL FIRESTORE ====================
+      useEffect(() => {
+        const unsubMembres = db.collection('membres').onSnapshot(
+          (snapshot) => {
+            const listeCloud = snapshot.docs.map((doc) => ({
+              id: doc.id,
+              ...doc.data()
+            }));
+            setMembres(listeCloud);
+            setSyncStatus('En ligne • Synchronisé');
+          },
+          (error) => {
+            console.error('Erreur Firestore membres:', error);
+            setSyncStatus('Hors ligne / Vérifier règles Firestore');
+          }
+        );
+
+        const unsubPresences = db.collection('presences').onSnapshot(
+          (snapshot) => {
+            const mapPresences = {};
+            snapshot.docs.forEach((doc) => {
+              const data = doc.data();
+              if (data.cleSession && Array.isArray(data.presentsIds)) {
+                mapPresences[data.cleSession] = data.presentsIds;
+              }
+            });
+            setPresences(mapPresences);
+          },
+          (error) => {
+            console.error('Erreur Firestore présences:', error);
+          }
+        );
+
+        return () => {
+          unsubMembres();
+          unsubPresences();
+        };
+      }, []);
+
+      const notify = (msg) => {
+        setToast(msg);
+        setTimeout(() => setToast(''), 4000);
+      };
+
+      const cleanStr = (s) => (s ? s.trim().toLowerCase().replace(/\s+/g, ' ') : '');
+      const cleanTel = (t) => (t ? t.replace(/\D/g, '') : '');
+
+      const genererMatricule = () => {
+        const annee = new Date().getFullYear();
+        const numero = String(membres.length + 1).padStart(4, '0');
+        const alea = Math.floor(10 + Math.random() * 89);
+        return `EM-${annee}-${numero}-${alea}`;
+      };
+
+      const compressImage = (file, maxWidth = 300) => {
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const img = new Image();
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              const scale = Math.min(1, maxWidth / img.width);
+              canvas.width = img.width * scale;
+              canvas.height = img.height * scale;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              resolve(canvas.toDataURL('image/jpeg', 0.8));
+            };
+            img.src = event.target.result;
+          };
+          reader.readAsDataURL(file);
+        });
+      };
+
+      const handleImage = async (e, target = 'add') => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const compressed = await compressImage(file, target === 'logo' ? 200 : 320);
+        if (target === 'add') setFormData((p) => ({ ...p, photo: compressed }));
+        if (target === 'edit') setEditData((p) => ({ ...p, photo: compressed }));
+        if (target === 'logo') {
+          setLogoUrl(compressed);
+          setLogoErreur(false);
+          localStorage.setItem('emimo_logo_v4', compressed);
+          notify('Logo EMIMO mis à jour');
+        }
+      };
+
+      const handleConnexion = (e) => {
+        e.preventDefault();
+        setErreurLogin('');
+        const code = codeAccesInput.trim();
+
+        if (modeConnexion === 'admin') {
+          if (code === 'emimo2026') {
+            setSession({ role: 'admin' });
+            setOngletAdmin('bilan');
+            setGroupeInspecteAdmin(null);
+            setCodeAccesInput('');
+            notify('Connexion Administrateur réussie');
+          } else {
+            setErreurLogin('Mot de passe administrateur incorrect (Indice : emimo2026)');
+          }
+        } else {
+          if (code === '1234') {
+            setSession({
+              role: 'groupe',
+              type: typeGroupeLogin,
+              nom: nomGroupeLogin
+            });
+            setOngletGroupe('membres');
+            setRecherche('');
+            setRecherchePointage('');
+            setCodeAccesInput('');
+            notify(`Espace ${nomGroupeLogin} ouvert`);
+          } else {
+            setErreurLogin('Code d’accès du responsable incorrect (Indice : 1234)');
+          }
+        }
+      };
+
+      const deconnecter = () => {
+        setSession(null);
+        setGroupeInspecteAdmin(null);
+        setMembreActif(null);
+        setCarteMembre(null);
+        setRecherche('');
+        setRecherchePointage('');
+      };
+
+      const ouvrirModalAjout = () => {
+        setErreurDoublon('');
+        if (session?.role === 'groupe') {
+          setFormData({
+            ...emptyForm,
+            bloc: session.type === 'bloc' ? session.nom : BLOCS[0].id,
+            departement: session.type === 'departement' ? session.nom : 'Aucun (Fidèle)'
+          });
+        } else {
+          setFormData(emptyForm);
+        }
+        setModalAjout(true);
+      };
+
+      const handleCreer = async (e) => {
+        e.preventDefault();
+        setErreurDoublon('');
+        const nom = cleanStr(formData.nom_complet);
+        const tel = cleanTel(formData.telephone);
+        if (!nom) return;
+
+        const existe = membres.find((m) => {
+          const sameName = cleanStr(m.nom_complet) === nom;
+          const samePhone = tel.length >= 6 && cleanTel(m.telephone) === tel;
+          return sameName || samePhone;
+        });
+
+        if (existe) {
+          if (session?.role === 'admin') {
+            setErreurDoublon(`Doublon bloqué : "${existe.nom_complet}" est déjà enregistré dans ${existe.bloc} (${existe.departement}).`);
+          } else {
+            setErreurDoublon(`Ce fidèle ("${existe.nom_complet}") est déjà enregistré dans la base EMIMO.`);
+          }
+          return;
+        }
+
+        const aujourdHui = new Date().toISOString().split('T')[0];
+        const nouveau = {
+          matricule: genererMatricule(),
+          ...formData,
+          bloc: session?.role === 'groupe' && session.type === 'bloc' ? session.nom : formData.bloc,
+          departement: session?.role === 'groupe' && session.type === 'departement' ? session.nom : formData.departement,
+          nom_complet: formData.nom_complet.trim(),
+          telephone: formData.telephone.trim(),
+          quartier: formData.quartier.trim(),
+          enfants: Number(formData.enfants) || 0,
+          date_inscription: aujourdHui,
+          mis_a_jour_le: new Date().toISOString()
+        };
+
+        try {
+          await db.collection('membres').add(nouveau);
+          setFormData(emptyForm);
+          setModalAjout(false);
+          notify(`${nouveau.nom_complet} synchronisé dans Firestore`);
+        } catch (err) {
+          console.error('Erreur ajout membre:', err);
+          notify('Erreur lors de l’enregistrement en ligne');
+        }
+      };
+
+      const handleModifier = async (e) => {
+        e.preventDefault();
+        setErreurDoublon('');
+        const nom = cleanStr(editData.nom_complet);
+        const tel = cleanTel(editData.telephone);
+        if (!nom) return;
+
+        const existe = membres.find((m) => {
+          if (m.id === editData.id) return false;
+          const sameName = cleanStr(m.nom_complet) === nom;
+          const samePhone = tel.length >= 6 && cleanTel(m.telephone) === tel;
+          return sameName || samePhone;
+        });
+
+        if (existe) {
+          setErreurDoublon(`Doublon bloqué : "${existe.nom_complet}" existe déjà dans la base.`);
+          return;
+        }
+
+        const maj = {
+          ...editData,
+          bloc: session?.role === 'groupe' && session.type === 'bloc' ? session.nom : editData.bloc,
+          departement: session?.role === 'groupe' && session.type === 'departement' ? session.nom : editData.departement,
+          nom_complet: editData.nom_complet.trim(),
+          telephone: editData.telephone.trim(),
+          quartier: editData.quartier.trim(),
+          enfants: Number(editData.enfants) || 0,
+          mis_a_jour_le: new Date().toISOString()
+        };
+
+        try {
+          const { id, ...payload } = maj;
+          await db.collection('membres').doc(String(id)).set(payload, { merge: true });
+          setMembreActif(maj);
+          setModeEdition(false);
+          notify(`Fiche de ${maj.nom_complet} synchronisée`);
+        } catch (err) {
+          console.error('Erreur modification membre:', err);
+          notify('Erreur lors de la mise à jour en ligne');
+        }
+      };
+
+      const handleSupprimer = async (membre) => {
+        if (window.confirm(`Voulez-vous vraiment supprimer définitivement "${membre.nom_complet}" ?`)) {
+          try {
+            await db.collection('membres').doc(String(membre.id)).delete();
+            setMembreActif(null);
+            setModeEdition(false);
+            notify(`${membre.nom_complet} supprimé`);
+          } catch (err) {
+            console.error('Erreur suppression membre:', err);
+            notify('Erreur lors de la suppression en ligne');
+          }
+        }
+      };
+
+      const scopeKey = session?.role === 'groupe' ? `${session.type}:${session.nom}` : 'GLOBAL';
+      const cleSession = `${scopeKey}|${dateCulte}|${typeCulte}`;
+      const presentsSession = presences[cleSession] || [];
+
+      const sauvegarderPresenceCloud = async (sessionCle, listeIds) => {
+        const safeDocId = sessionCle.replace(/[\/|#?[\]]/g, '_');
+        try {
+          await db.collection('presences').doc(safeDocId).set({
+            cleSession: sessionCle,
+            presentsIds: listeIds,
+            mis_a_jour_le: new Date().toISOString()
+          });
+        } catch (err) {
+          console.error('Erreur synchro présence:', err);
+          notify('Erreur de synchronisation des présences');
+        }
+      };
+
+      const togglePresence = (membreId) => {
+        const actuels = presences[cleSession] || [];
+        const existe = actuels.includes(membreId);
+        const maj = existe ? actuels.filter((id) => id !== membreId) : [...actuels, membreId];
+        setPresences({ ...presences, [cleSession]: maj });
+        sauvegarderPresenceCloud(cleSession, maj);
+      };
+
+      const marquerTousPresents = (listeIds) => {
+        const actuels = new Set(presences[cleSession] || []);
+        listeIds.forEach((id) => actuels.add(id));
+        const maj = Array.from(actuels);
+        setPresences({ ...presences, [cleSession]: maj });
+        sauvegarderPresenceCloud(cleSession, maj);
+        notify(`${listeIds.length} membre(s) marqués présents`);
+      };
+
+      const compterPresencesMembre = (membreId) => {
+        return Object.values(presences).filter((liste) => liste.includes(membreId)).length;
+      };
+
+      const getPresentsGroupeDate = (type, nom, date) => {
+        const prefix = `${type}:${nom}|${date}|`;
+        const idsPresents = new Set();
+        Object.entries(presences).forEach(([key, ids]) => {
+          if (key.startsWith(prefix)) {
+            ids.forEach((id) => idsPresents.add(id));
+          }
+        });
+        return idsPresents.size;
+      };
+
+      const exporterCSV = (listeFiltree, titreNom) => {
+        const headers = ['Matricule', 'Nom Complet', 'Téléphone', 'Quartier / Commune', 'Bloc', 'Département', 'État Civil', 'Enfants', 'Baptisé', 'Présences Totales', 'Date Inscription'];
+        const rows = listeFiltree.map((m) => [
+          `"${m.matricule || ''}"`,
+          `"${(m.nom_complet || '').replace(/"/g, '""')}"`,
+          `"${(m.telephone || '').replace(/"/g, '""')}"`,
+          `"${(m.quartier || '').replace(/"/g, '""')}"`,
+          `"${m.bloc}"`,
+          `"${m.departement}"`,
+          `"${m.etat_civil}"`,
+          m.enfants || 0,
+          m.baptise ? 'Oui' : 'Non',
+          compterPresencesMembre(m.id),
+          m.date_inscription || ''
+        ]);
+        const csvContent = '\uFEFF' + [headers.join(';'), ...rows.map((r) => r.join(';'))].join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `EMIMO_${titreNom.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
+        link.click();
+        URL.revokeObjectURL(url);
+        notify(`Export CSV réussi (${listeFiltree.length} membres)`);
+      };
+
+      const exporterPresencesGroupeCSV = (listeGroupe, nomGroupe) => {
+        const headers = ['Date', 'Activité / Culte', 'Groupe', 'Matricule', 'Nom Complet', 'Statut'];
+        const rows = listeGroupe.map((m) => [
+          dateCulte,
+          `"${typeCulte}"`,
+          `"${nomGroupe}"`,
+          `"${m.matricule}"`,
+          `"${m.nom_complet.replace(/"/g, '""')}"`,
+          presentsSession.includes(m.id) ? 'Présent' : 'Absent'
+        ]);
+        const csvContent = '\uFEFF' + [headers.join(';'), ...rows.map((r) => r.join(';'))].join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Presence_${nomGroupe.replace(/[^a-zA-Z0-9]/g, '_')}_${dateCulte}.csv`;
+        link.click();
+        URL.revokeObjectURL(url);
+        notify(`Feuille de présence exportée`);
+      };
+
+      const getInitiales = (nom) => {
+        return (nom || '?')
+          .split(' ')
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((n) => n[0].toUpperCase())
+          .join('');
+      };
+
+      const getBlocBadge = (blocId) => {
+        return BLOCS.find((b) => b.id === blocId) || BLOCS[0];
+      };
+
+      if (splash) {
+        return (
+          <div className="min-h-screen w-full bg-[#133C8B] text-white flex flex-col items-center justify-center px-6 relative select-none">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-24 h-24 bg-white rounded-3xl p-2.5 shadow-2xl mb-4 flex items-center justify-center overflow-hidden">
+                {!logoErreur ? (
+                  <img src={logoUrl} alt="Logo EMIMO" onError={() => setLogoErreur(true)} className="w-full h-full object-contain" />
+                ) : (
+                  <span className="text-3xl font-black text-[#133C8B]">EM</span>
+                )}
+              </div>
+              <h1 className="text-4xl font-black tracking-tight">OLI-APP</h1>
+              <p className="text-xs tracking-[0.18em] uppercase font-semibold mt-2 text-white/95">
+                ÉGLISE MISSIONNAIRE <span className="font-extrabold">MONT DES OLIVIERS</span>
+              </p>
+
+              <div className="ios-spinner relative w-8 h-8 mt-6">
+                <div></div><div></div><div></div><div></div>
+                <div></div><div></div><div></div><div></div>
+                <div></div><div></div><div></div><div></div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      if (!session) {
+        return (
+          <div className="min-h-screen bg-[#F2F3F7] flex flex-col items-center justify-center p-4">
+            <div className="w-full max-w-md bg-white rounded-3xl shadow-xl border border-slate-200/80 overflow-hidden">
+              <div className="bg-[#133C8B] p-6 text-white text-center">
+                <div className="w-16 h-16 bg-white rounded-2xl p-1.5 mx-auto mb-3 shadow-md flex items-center justify-center overflow-hidden">
+                  {!logoErreur ? (
+                    <img src={logoUrl} alt="Logo EMIMO" onError={() => setLogoErreur(true)} className="w-full h-full object-contain" />
+                  ) : (
+                    <span className="text-xl font-black text-[#133C8B]">EM</span>
+                  )}
+                </div>
+                <h1 className="text-xl font-black tracking-tight">CONNECTEZ-VOUS</h1>
+                <p className="text-[11px] text-blue-200 mt-1">{syncStatus}</p>
+              </div>
+
+              <div className="p-6">
+                <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-2xl mb-6">
+                  <button
+                    type="button"
+                    onClick={() => { setModeConnexion('groupe'); setErreurLogin(''); setCodeAccesInput(''); }}
+                    className={`py-2.5 rounded-xl text-xs font-extrabold transition cursor-pointer ${
+                      modeConnexion === 'groupe' ? 'bg-white text-[#133C8B] shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    Département / Bloc
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setModeConnexion('admin'); setErreurLogin(''); setCodeAccesInput(''); }}
+                    className={`py-2.5 rounded-xl text-xs font-extrabold transition cursor-pointer ${
+                      modeConnexion === 'admin' ? 'bg-[#133C8B] text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    Administration 🔒
+                  </button>
+                </div>
+
+                {erreurLogin && (
+                  <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold text-center">
+                    {erreurLogin}
+                  </div>
+                )}
+
+                <form onSubmit={handleConnexion} className="space-y-4">
+                  {modeConnexion === 'groupe' ? (
+                    <>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-600 mb-1.5">Type d'entité</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTypeGroupeLogin('departement');
+                              setNomGroupeLogin(DEPARTEMENTS[1]);
+                            }}
+                            className={`py-2 px-3 rounded-xl border text-xs font-bold cursor-pointer transition ${
+                              typeGroupeLogin === 'departement'
+                                ? 'border-[#133C8B] bg-blue-50 text-[#133C8B]'
+                                : 'border-slate-200 text-slate-600'
+                            }`}
+                          >
+                            Département
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTypeGroupeLogin('bloc');
+                              setNomGroupeLogin(BLOCS[0].id);
+                            }}
+                            className={`py-2 px-3 rounded-xl border text-xs font-bold cursor-pointer transition ${
+                              typeGroupeLogin === 'bloc'
+                                ? 'border-[#133C8B] bg-blue-50 text-[#133C8B]'
+                                : 'border-slate-200 text-slate-600'
+                            }`}
+                          >
+                            Bloc (Cellule)
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-600 mb-1.5">
+                          Sélectionnez votre {typeGroupeLogin === 'departement' ? 'Département' : 'Bloc'}
+                        </label>
+                        <select
+                          value={nomGroupeLogin}
+                          onChange={(e) => setNomGroupeLogin(e.target.value)}
+                          className="w-full px-3.5 py-3 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-[#133C8B] outline-none"
+                        >
+                          {typeGroupeLogin === 'departement'
+                            ? DEPARTEMENTS.filter((d) => d !== 'Aucun (Fidèle)').map((d) => (
+                                <option key={d} value={d}>{d}</option>
+                              ))
+                            : BLOCS.map((b) => (
+                                <option key={b.id} value={b.id}>{b.id}</option>
+                              ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-600 mb-1.5">Code d'accès Responsable</label>
+                        <input
+                          type="password"
+                          required
+                          placeholder="••••"
+                          value={codeAccesInput}
+                          onChange={(e) => setCodeAccesInput(e.target.value)}
+                          className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-bold focus:ring-2 focus:ring-[#133C8B] outline-none"
+                        />
+                        <p className="text-[10px] text-slate-400 mt-1">Accès strictement limité aux membres et présences de ce groupe.</p>
+                      </div>
+                    </>
+                  ) : (
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1.5">Mot de passe Administrateur Central</label>
+                      <input
+                        type="password"
+                        required
+                        placeholder="••••••••"
+                        value={codeAccesInput}
+                        onChange={(e) => setCodeAccesInput(e.target.value)}
+                        className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-bold focus:ring-2 focus:ring-[#133C8B] outline-none"
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">Accès complet aux bilans, statistiques globales et rapports imprimables.</p>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    className="w-full py-3.5 rounded-xl bg-[#133C8B] hover:bg-[#0F2C67] text-white text-xs font-black shadow-md transition cursor-pointer"
+                  >
+                    {modeConnexion === 'admin' ? 'Accéder à l’Administration' : `Ouvrir l’espace ${nomGroupeLogin}`}
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      const membresAutorises =
+        session.role === 'admin'
+          ? membres
+          : membres.filter((m) =>
+              session.type === 'bloc' ? m.bloc === session.nom : m.departement === session.nom
+            );
+
+      const membresFiltres = membresAutorises
+        .filter((m) => {
+          const q = cleanStr(recherche);
+          const matchSearch =
+            !q ||
+            cleanStr(m.nom_complet).includes(q) ||
+            cleanStr(m.matricule).includes(q) ||
+            cleanStr(m.quartier).includes(q) ||
+            cleanStr(m.departement).includes(q) ||
+            cleanTel(m.telephone).includes(q.replace(/\D/g, '') || '___');
+          const matchBloc = session.role === 'groupe' || filtreBloc === 'Tous' || m.bloc === filtreBloc;
+          const matchDept = session.role === 'groupe' || filtreDept === 'Tous' || m.departement === filtreDept;
+          const matchBaptise = !filtreBaptise || m.baptise;
+          return matchSearch && matchBloc && matchDept && matchBaptise;
+        })
+        .sort((a, b) => (a.nom_complet || '').localeCompare(b.nom_complet || ''));
+
+      const membresPointage = membresAutorises
+        .filter((m) => {
+          const q = cleanStr(recherchePointage);
+          return (
+            !q ||
+            cleanStr(m.nom_complet).includes(q) ||
+            cleanStr(m.matricule).includes(q) ||
+            cleanTel(m.telephone).includes(q.replace(/\D/g, '') || '___')
+          );
+        })
+        .sort((a, b) => (a.nom_complet || '').localeCompare(b.nom_complet || ''));
+
+      const totalMembres = membres.length;
+      const totalBaptises = membres.filter((m) => m.baptise).length;
+      const totalEnfants = membres.reduce((acc, m) => acc + (Number(m.enfants) || 0), 0);
+      const tauxBapteme = totalMembres ? Math.round((totalBaptises / totalMembres) * 100) : 0;
+
+      return (
+        <div className="min-h-screen flex flex-col bg-[#F2F3F7] pb-20 md:pb-8">
+          {toast && (
+            <div className="fixed bottom-20 md:bottom-6 right-4 md:right-6 z-50 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl text-xs font-bold animate-bounce no-print">
+              {toast}
+            </div>
+          )}
+
+          <header className="bg-[#133C8B] text-white sticky top-0 z-30 shadow-md no-print">
+            <div className="max-w-7xl mx-auto px-4 py-3.5 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => session.role === 'admin' && logoRef.current?.click()}
+                  title={session.role === 'admin' ? 'Cliquer pour changer le logo' : 'EMIMO'}
+                  className="w-10 h-10 bg-white rounded-xl p-1 flex items-center justify-center shadow overflow-hidden shrink-0 cursor-pointer"
+                >
+                  {!logoErreur ? (
+                    <img src={logoUrl} alt="Logo" onError={() => setLogoErreur(true)} className="w-full h-full object-contain" />
+                  ) : (
+                    <span className="text-xs font-black text-[#133C8B]">EM</span>
+                  )}
+                </button>
+                <input ref={logoRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleImage(e, 'logo')} />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-lg font-black tracking-tight leading-none">EMIMO</h1>
+                    <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md ${
+                      session.role === 'admin' ? 'bg-amber-400 text-slate-900' : 'bg-white/20 text-white'
+                    }`}>
+                      {session.role === 'admin' ? 'ADMINISTRATION' : session.nom.toUpperCase()}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-blue-200 font-medium mt-0.5">{syncStatus}</p>
+                </div>
+              </div>
+
+              {session.role === 'admin' ? (
+                <nav className="hidden md:flex items-center gap-1.5 bg-[#0D2A61] p-1 rounded-xl">
+                  <button
+                    onClick={() => { setOngletAdmin('bilan'); setGroupeInspecteAdmin(null); }}
+                    className={`px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${ongletAdmin === 'bilan' && !groupeInspecteAdmin ? 'bg-white text-[#133C8B] shadow-sm' : 'text-blue-200 hover:text-white'}`}
+                  >
+                    Bilan Global
+                  </button>
+                  <button
+                    onClick={() => { setOngletAdmin('groupes'); setGroupeInspecteAdmin(null); }}
+                    className={`px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${ongletAdmin === 'groupes' || groupeInspecteAdmin ? 'bg-white text-[#133C8B] shadow-sm' : 'text-blue-200 hover:text-white'}`}
+                  >
+                    Blocs & Départements
+                  </button>
+                  <button
+                    onClick={() => { setOngletAdmin('annuaire'); setGroupeInspecteAdmin(null); }}
+                    className={`px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${ongletAdmin === 'annuaire' && !groupeInspecteAdmin ? 'bg-white text-[#133C8B] shadow-sm' : 'text-blue-200 hover:text-white'}`}
+                  >
+                    Tous les Membres ({totalMembres})
+                  </button>
+                  <button
+                    onClick={() => { setOngletAdmin('rapport'); setGroupeInspecteAdmin(null); }}
+                    className={`px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${ongletAdmin === 'rapport' && !groupeInspecteAdmin ? 'bg-white text-[#133C8B] shadow-sm' : 'text-blue-200 hover:text-white'}`}
+                  >
+                    Rapport Imprimable 🖨️
+                  </button>
+                </nav>
+              ) : (
+                <nav className="hidden md:flex items-center gap-1.5 bg-[#0D2A61] p-1 rounded-xl">
+                  <button
+                    onClick={() => setOngletGroupe('membres')}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${ongletGroupe === 'membres' ? 'bg-white text-[#133C8B] shadow-sm' : 'text-blue-200 hover:text-white'}`}
+                  >
+                    Nos Membres ({membresAutorises.length})
+                  </button>
+                  <button
+                    onClick={() => setOngletGroupe('presences')}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${ongletGroupe === 'presences' ? 'bg-white text-[#133C8B] shadow-sm' : 'text-blue-200 hover:text-white'}`}
+                  >
+                    Pointage & Présences
+                  </button>
+                </nav>
+              )}
+
+              <div className="flex items-center gap-2">
+                {session.role === 'admin' && (
+                  <button
+                    onClick={() => setModalStockage(true)}
+                    className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition cursor-pointer hidden sm:inline-block"
+                  >
+                    Sauvegarde
+                  </button>
+                )}
+
+                <button
+                  onClick={ouvrirModalAjout}
+                  className="px-3 py-1.5 rounded-xl bg-white text-[#133C8B] hover:bg-blue-50 text-xs font-black shadow-sm transition flex items-center gap-1 cursor-pointer"
+                >
+                  <span>+</span> Ajouter
+                </button>
+
+                <button
+                  onClick={deconnecter}
+                  title="Quitter la session"
+                  className="px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-100 text-xs font-bold transition cursor-pointer"
+                >
+                  Quitter
+                </button>
+              </div>
+            </div>
+          </header>
+
+          <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 z-40 flex items-center justify-around py-2 px-1 shadow-[0_-4px_12px_rgba(0,0,0,0.04)] no-print">
+            {session.role === 'admin' ? (
+              <>
+                <button
+                  onClick={() => { setOngletAdmin('bilan'); setGroupeInspecteAdmin(null); }}
+                  className={`flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-bold ${ongletAdmin === 'bilan' && !groupeInspecteAdmin ? 'text-[#133C8B]' : 'text-slate-400'}`}
+                >
+                  <span>📊</span> Bilan
+                </button>
+                <button
+                  onClick={() => { setOngletAdmin('groupes'); setGroupeInspecteAdmin(null); }}
+                  className={`flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-bold ${ongletAdmin === 'groupes' || groupeInspecteAdmin ? 'text-[#133C8B]' : 'text-slate-400'}`}
+                >
+                  <span>🏛️</span> Groupes
+                </button>
+                <button
+                  onClick={() => { setOngletAdmin('annuaire'); setGroupeInspecteAdmin(null); }}
+                  className={`flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-bold ${ongletAdmin === 'annuaire' && !groupeInspecteAdmin ? 'text-[#133C8B]' : 'text-slate-400'}`}
+                >
+                  <span>👥</span> Membres
+                </button>
+                <button
+                  onClick={() => { setOngletAdmin('rapport'); setGroupeInspecteAdmin(null); }}
+                  className={`flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-bold ${ongletAdmin === 'rapport' && !groupeInspecteAdmin ? 'text-[#133C8B]' : 'text-slate-400'}`}
+                >
+                  <span>🖨️</span> Rapport
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => setOngletGroupe('membres')}
+                  className={`flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-bold ${ongletGroupe === 'membres' ? 'text-[#133C8B]' : 'text-slate-400'}`}
+                >
+                  <span>👥</span> Nos Membres ({membresAutorises.length})
+                </button>
+                <button
+                  onClick={() => setOngletGroupe('presences')}
+                  className={`flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-bold ${ongletGroupe === 'presences' ? 'text-[#133C8B]' : 'text-slate-400'}`}
+                >
+                  <span>✅</span> Présences ({presentsSession.length})
+                </button>
+              </>
+            )}
+          </nav>
+
+          <main className="max-w-7xl w-full mx-auto px-4 py-6 flex-1">
+            {session.role === 'groupe' && (
+              <>
+                {ongletGroupe === 'membres' && (
+                  <div className="space-y-5">
+                    <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div>
+                        <span className="text-[10px] font-extrabold uppercase tracking-wider bg-blue-50 text-[#133C8B] px-2.5 py-1 rounded-md">
+                          {session.type === 'bloc' ? 'Cellule / Bloc' : 'Département Ministériel'}
+                        </span>
+                        <h2 className="text-xl font-black text-slate-900 mt-1.5">{session.nom}</h2>
+                        <p className="text-xs text-slate-500">
+                          Effectif enregistré : <strong>{membresAutorises.length} membre(s)</strong> • Baptisés : <strong>{membresAutorises.filter(m => m.baptise).length}</strong>
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => exporterCSV(membresAutorises, session.nom)}
+                        className="self-start sm:self-auto px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition cursor-pointer"
+                      >
+                        Exporter notre liste (CSV)
+                      </button>
+                    </div>
+
+                    <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row gap-3">
+                      <input
+                        type="text"
+                        value={recherche}
+                        onChange={(e) => setRecherche(e.target.value)}
+                        placeholder={`Rechercher un membre dans ${session.nom}...`}
+                        className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-[#133C8B]"
+                      />
+                      <label className="flex items-center gap-2 px-3.5 py-2.5 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={filtreBaptise}
+                          onChange={(e) => setFiltreBaptise(e.target.checked)}
+                          className="w-4 h-4 accent-[#133C8B]"
+                        />
+                        <span className="text-xs font-bold text-slate-600">Baptisés uniquement</span>
+                      </label>
+                    </div>
+
+                    {membresFiltres.length === 0 ? (
+                      <div className="bg-white rounded-2xl border border-slate-200/80 p-12 text-center text-slate-500">
+                        <p className="text-sm font-bold">Aucun membre dans {session.nom}</p>
+                        <p className="text-xs mt-1">Cliquez sur "+ Ajouter" en haut pour inscrire un membre dans votre groupe.</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {membresFiltres.map((m) => (
+                          <div
+                            key={m.id}
+                            onClick={() => {
+                              setMembreActif(m);
+                              setModeEdition(false);
+                              setErreurDoublon('');
+                            }}
+                            className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-xs hover:shadow-md hover:border-blue-300 transition cursor-pointer flex flex-col justify-between"
+                          >
+                            <div className="flex items-start justify-between gap-3 mb-3">
+                              <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center font-black text-slate-500 overflow-hidden shrink-0 border border-slate-200">
+                                {m.photo ? (
+                                  <img src={m.photo} alt="" className="w-full h-full object-cover" />
+                                ) : (
+                                  getInitiales(m.nom_complet)
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-[10px] font-bold text-slate-400">{m.matricule}</div>
+                                <h3 className="text-sm font-black text-slate-900 truncate">{m.nom_complet}</h3>
+                                <div className="text-xs text-slate-500">{m.telephone || 'Sans téléphone'}</div>
+                              </div>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCarteMembre(m);
+                                }}
+                                className="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-[#133C8B] hover:text-white text-[#133C8B] text-[11px] font-bold transition shrink-0 cursor-pointer"
+                              >
+                                Carte QR
+                              </button>
+                            </div>
+
+                            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                              <span>{m.baptise ? '✓ Baptisé(e)' : 'Non baptisé(e)'}</span>
+                              <span className="font-bold text-[#133C8B]">{compterPresencesMembre(m.id)} présence(s)</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {ongletGroupe === 'presences' && (
+                  <div className="space-y-5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <h2 className="text-xl font-black text-slate-900">Présences — {session.nom}</h2>
+                        <p className="text-xs text-slate-500">Pointage synchronisé en temps réel pour votre groupe</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => marquerTousPresents(membresPointage.map((m) => m.id))}
+                          className="px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold transition cursor-pointer"
+                        >
+                          Tout cocher ({membresPointage.length})
+                        </button>
+                        <button
+                          onClick={() => exporterPresencesGroupeCSV(membresAutorises, session.nom)}
+                          className="px-3.5 py-2 rounded-xl bg-[#133C8B] hover:bg-[#0F2C67] text-white text-xs font-bold shadow-xs transition cursor-pointer"
+                        >
+                          Exporter la feuille
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-500 mb-1">Date de l'activité / culte</label>
+                          <input
+                            type="date"
+                            value={dateCulte}
+                            onChange={(e) => setDateCulte(e.target.value)}
+                            className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-500 mb-1">Type de rencontre</label>
+                          <select
+                            value={typeCulte}
+                            onChange={(e) => setTypeCulte(e.target.value)}
+                            className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold"
+                          >
+                            {TYPES_CULTES.map((t) => (
+                              <option key={t} value={t}>{t}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-500 mb-1">Recherche rapide</label>
+                          <input
+                            type="text"
+                            value={recherchePointage}
+                            onChange={(e) => setRecherchePointage(e.target.value)}
+                            placeholder="Nom ou matricule..."
+                            className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-100">
+                        <div className="flex items-center justify-between text-xs font-bold mb-1.5">
+                          <span className="text-slate-600">Participation de {session.nom}</span>
+                          <span className="text-[#133C8B]">
+                            {presentsSession.length} présent(s) sur {membresAutorises.length} (
+                            {membresAutorises.length ? Math.round((presentsSession.length / membresAutorises.length) * 100) : 0}%)
+                          </span>
+                        </div>
+                        <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-emerald-500 transition-all duration-300"
+                            style={{
+                              width: `${membresAutorises.length ? Math.round((presentsSession.length / membresAutorises.length) * 100) : 0}%`
+                            }}
+                          ></div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {membresPointage.map((m) => {
+                        const estPresent = presentsSession.includes(m.id);
+                        return (
+                          <div
+                            key={m.id}
+                            onClick={() => togglePresence(m.id)}
+                            className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 cursor-pointer transition select-none ${
+                              estPresent
+                                ? 'bg-emerald-50/70 border-emerald-300 shadow-xs'
+                                : 'bg-white border-slate-200/80 hover:border-slate-300'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center font-bold text-xs text-slate-600 overflow-hidden shrink-0">
+                                {m.photo ? (
+                                  <img src={m.photo} alt="" className="w-full h-full object-cover" />
+                                ) : (
+                                  getInitiales(m.nom_complet)
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-xs font-black text-slate-900 truncate">{m.nom_complet}</div>
+                                <div className="text-[10px] text-slate-400">{m.matricule}</div>
+                              </div>
+                            </div>
+
+                            <span className={`text-xs font-extrabold px-3 py-1.5 rounded-xl transition shrink-0 ${
+                              estPresent ? 'bg-emerald-600 text-white shadow-xs' : 'bg-slate-100 text-slate-500'
+                            }`}>
+                              {estPresent ? '✓ Présent' : 'Absent'}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {session.role === 'admin' && (
+              <>
+                {ongletAdmin === 'bilan' && !groupeInspecteAdmin && (
+                  <div className="space-y-6">
+                    <div className="bg-gradient-to-r from-[#0F2C67] to-[#133C8B] rounded-3xl p-6 text-white shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div>
+                        <span className="text-[10px] font-extrabold uppercase tracking-widest bg-amber-400 text-slate-900 px-2.5 py-1 rounded-md">
+                          Accès Administrateur Exclusif
+                        </span>
+                        <h2 className="text-2xl font-black mt-2">Bilan Général EMIMO</h2>
+                        <p className="text-xs text-blue-100 mt-1">Consolidation en temps réel de tous les Blocs et Départements</p>
+                      </div>
+                      <button
+                        onClick={() => setOngletAdmin('rapport')}
+                        className="px-5 py-3 rounded-2xl bg-white text-[#133C8B] text-xs font-black shadow hover:bg-blue-50 transition cursor-pointer shrink-0"
+                      >
+                        Générer le Rapport Imprimable 🖨️
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                      <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
+                        <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Fidèles</div>
+                        <div className="text-3xl font-black text-slate-900 mt-1.5">{totalMembres}</div>
+                        <div className="text-xs text-slate-500 mt-1">Tous blocs & départements</div>
+                      </div>
+                      <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
+                        <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Membres Baptisés</div>
+                        <div className="text-3xl font-black text-emerald-600 mt-1.5">
+                          {totalBaptises} <span className="text-sm font-bold text-slate-400">({tauxBapteme}%)</span>
+                        </div>
+                        <div className="text-xs text-slate-500 mt-1">{totalMembres - totalBaptises} non baptisés</div>
+                      </div>
+                      <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
+                        <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Couples Mariés</div>
+                        <div className="text-3xl font-black text-[#133C8B] mt-1.5">{membres.filter(m => m.etat_civil === 'Marié(e)').length}</div>
+                        <div className="text-xs text-slate-500 mt-1">Foyers enregistrés</div>
+                      </div>
+                      <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
+                        <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Enfants Déclarés</div>
+                        <div className="text-3xl font-black text-amber-600 mt-1.5">{totalEnfants}</div>
+                        <div className="text-xs text-slate-500 mt-1">Rattachés aux parents</div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs">
+                        <h3 className="text-sm font-black text-slate-900 mb-4">Synthèse par Bloc</h3>
+                        <div className="space-y-3">
+                          {BLOCS.map((b) => {
+                            const list = membres.filter((m) => m.bloc === b.id);
+                            const pres = getPresentsGroupeDate('bloc', b.id, dateCulte);
+                            return (
+                              <div
+                                key={b.id}
+                                onClick={() => setGroupeInspecteAdmin({ type: 'bloc', nom: b.id })}
+                                className="p-4 rounded-2xl bg-slate-50 hover:bg-blue-50/50 border border-slate-200 cursor-pointer transition flex items-center justify-between"
+                              >
+                                <div>
+                                  <div className="text-sm font-black text-slate-900">{b.id}</div>
+                                  <div className="text-xs text-slate-500 mt-0.5">
+                                    Effectif : <strong>{list.length}</strong> • Présents ({dateCulte}) : <strong className="text-emerald-600">{pres}</strong>
+                                  </div>
+                                </div>
+                                <span className="text-xs font-bold text-[#133C8B]">Inspecter →</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs">
+                        <h3 className="text-sm font-black text-slate-900 mb-4">Synthèse par Département</h3>
+                        <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
+                          {DEPARTEMENTS.filter((d) => d !== 'Aucun (Fidèle)').map((dept) => {
+                            const list = membres.filter((m) => m.departement === dept);
+                            const pres = getPresentsGroupeDate('departement', dept, dateCulte);
+                            return (
+                              <div
+                                key={dept}
+                                onClick={() => setGroupeInspecteAdmin({ type: 'departement', nom: dept })}
+                                className="p-3.5 rounded-xl bg-slate-50 hover:bg-blue-50/50 border border-slate-200 cursor-pointer transition flex items-center justify-between"
+                              >
+                                <div>
+                                  <div className="text-xs font-black text-slate-900">{dept}</div>
+                                  <div className="text-[11px] text-slate-500">
+                                    Effectif : <strong>{list.length}</strong> • Présents ({dateCulte}) : <strong className="text-emerald-600">{pres}</strong>
+                                  </div>
+                                </div>
+                                <span className="text-xs font-bold text-[#133C8B]">Voir →</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {ongletAdmin === 'groupes' && !groupeInspecteAdmin && (
+                  <div className="space-y-6">
+                    <div>
+                      <h2 className="text-xl font-black text-slate-900">Supervision des Blocs & Départements</h2>
+                      <p className="text-xs text-slate-500">Cliquez sur n'importe quel groupe pour consulter ses membres et ses présences.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {BLOCS.map((b) => {
+                        const count = membres.filter((m) => m.bloc === b.id).length;
+                        return (
+                          <div
+                            key={b.id}
+                            onClick={() => setGroupeInspecteAdmin({ type: 'bloc', nom: b.id })}
+                            className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:border-[#133C8B] cursor-pointer transition"
+                          >
+                            <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded ${b.bg}`}>{b.code}</span>
+                            <h3 className="text-base font-black text-slate-900 mt-2">{b.id}</h3>
+                            <div className="text-xs text-slate-500 mt-1">{count} membre(s) enregistré(s)</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                      {DEPARTEMENTS.map((dept) => {
+                        const count = membres.filter((m) => m.departement === dept).length;
+                        return (
+                          <div
+                            key={dept}
+                            onClick={() => setGroupeInspecteAdmin({ type: 'departement', nom: dept })}
+                            className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs hover:border-[#133C8B] cursor-pointer transition flex items-center justify-between"
+                          >
+                            <span className="text-xs font-bold text-slate-800">{dept}</span>
+                            <span className="text-xs font-black bg-blue-50 text-[#133C8B] px-2.5 py-1 rounded-lg">{count}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {groupeInspecteAdmin && (
+                  <div className="space-y-5">
+                    <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => setGroupeInspecteAdmin(null)}
+                          className="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 font-bold text-slate-700 cursor-pointer"
+                        >
+                          ←
+                        </button>
+                        <div>
+                          <span className="text-[10px] font-bold text-slate-400 uppercase">Inspection Administrateur</span>
+                          <h2 className="text-lg font-black text-[#133C8B]">{groupeInspecteAdmin.nom}</h2>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const list = membres.filter((m) =>
+                            groupeInspecteAdmin.type === 'bloc'
+                              ? m.bloc === groupeInspecteAdmin.nom
+                              : m.departement === groupeInspecteAdmin.nom
+                          );
+                          exporterCSV(list, groupeInspecteAdmin.nom);
+                        }}
+                        className="px-3.5 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold cursor-pointer"
+                      >
+                        Exporter CSV
+                      </button>
+                    </div>
+
+                    <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs divide-y divide-slate-100">
+                      {membres
+                        .filter((m) =>
+                          groupeInspecteAdmin.type === 'bloc'
+                            ? m.bloc === groupeInspecteAdmin.nom
+                            : m.departement === groupeInspecteAdmin.nom
+                        )
+                        .map((m) => (
+                          <div
+                            key={m.id}
+                            onClick={() => { setMembreActif(m); setModeEdition(false); }}
+                            className="py-3 flex items-center justify-between hover:bg-slate-50 px-2 rounded-xl cursor-pointer"
+                          >
+                            <div>
+                              <div className="text-xs font-black text-slate-900">{m.nom_complet}</div>
+                              <div className="text-[10px] text-slate-400">{m.matricule} • {m.telephone || 'Sans numéro'}</div>
+                            </div>
+                            <span className="text-xs font-bold text-[#133C8B]">{compterPresencesMembre(m.id)} présence(s)</span>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
+                {ongletAdmin === 'annuaire' && !groupeInspecteAdmin && (
+                  <div className="space-y-5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <h2 className="text-xl font-black text-slate-900">Répertoire Complet de l'Église</h2>
+                        <p className="text-xs text-slate-500">Accès administrateur à l'ensemble des fiches et cartes QR</p>
+                      </div>
+                      <button
+                        onClick={() => exporterCSV(membresFiltres, 'Repertoire_Complet')}
+                        className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold cursor-pointer"
+                      >
+                        Exporter tout (CSV)
+                      </button>
+                    </div>
+
+                    <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                      <input
+                        type="text"
+                        value={recherche}
+                        onChange={(e) => setRecherche(e.target.value)}
+                        placeholder="Nom, matricule, téléphone..."
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs"
+                      />
+                      <select
+                        value={filtreBloc}
+                        onChange={(e) => setFiltreBloc(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold"
+                      >
+                        <option value="Tous">Tous les blocs</option>
+                        {BLOCS.map((b) => (
+                          <option key={b.id} value={b.id}>{b.id}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={filtreDept}
+                        onChange={(e) => setFiltreDept(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold"
+                      >
+                        <option value="Tous">Tous les départements</option>
+                        {DEPARTEMENTS.map((d) => (
+                          <option key={d} value={d}>{d}</option>
+                        ))}
+                      </select>
+                      <label className="flex items-center justify-between px-3.5 py-2.5 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer">
+                        <span className="text-xs font-bold text-slate-600">Baptisés uniquement</span>
+                        <input
+                          type="checkbox"
+                          checked={filtreBaptise}
+                          onChange={(e) => setFiltreBaptise(e.target.checked)}
+                          className="w-4 h-4 accent-[#133C8B]"
+                        />
+                      </label>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {membresFiltres.map((m) => {
+                        const blocInfo = getBlocBadge(m.bloc);
+                        return (
+                          <div
+                            key={m.id}
+                            onClick={() => { setMembreActif(m); setModeEdition(false); }}
+                            className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-xs hover:shadow-md cursor-pointer transition"
+                          >
+                            <div className="flex items-start justify-between gap-3 mb-3">
+                              <div className="w-11 h-11 rounded-xl bg-slate-100 flex items-center justify-center font-black text-slate-500 overflow-hidden shrink-0">
+                                {m.photo ? <img src={m.photo} alt="" className="w-full h-full object-cover" /> : getInitiales(m.nom_complet)}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-[10px] font-bold text-slate-400">{m.matricule}</div>
+                                <h3 className="text-sm font-black text-slate-900 truncate">{m.nom_complet}</h3>
+                                <div className="text-xs text-slate-500">{m.telephone || 'Sans téléphone'}</div>
+                              </div>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setCarteMembre(m); }}
+                                className="px-2.5 py-1.5 rounded-lg bg-blue-50 text-[#133C8B] text-[11px] font-bold cursor-pointer"
+                              >
+                                Carte QR
+                              </button>
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${blocInfo.bg}`}>{blocInfo.short}</span>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">{m.departement}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {ongletAdmin === 'rapport' && !groupeInspecteAdmin && (
+                  <div className="space-y-5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 no-print">
+                      <div>
+                        <h2 className="text-xl font-black text-slate-900">Rapport Officiel & Bilan Imprimable</h2>
+                        <p className="text-xs text-slate-500">Document consolidé pour le secrétariat et le conseil pastoral</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="date"
+                          value={dateCulte}
+                          onChange={(e) => setDateCulte(e.target.value)}
+                          className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-bold"
+                        />
+                        <button
+                          onClick={() => window.print()}
+                          className="px-5 py-2.5 rounded-xl bg-[#133C8B] hover:bg-[#0F2C67] text-white text-xs font-black shadow-md transition cursor-pointer flex items-center gap-2"
+                        >
+                          <span>🖨️</span> Imprimer / Enregistrer en PDF
+                        </button>
+                      </div>
+                    </div>
+
+                    <div id="zone-impression-rapport" className="bg-white rounded-3xl p-8 border border-slate-200 shadow-xs space-y-8">
+                      <div className="border-b-2 border-[#133C8B] pb-6 flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <div className="w-16 h-16 rounded-2xl border border-slate-200 p-1 flex items-center justify-center overflow-hidden">
+                            {!logoErreur ? (
+                              <img src={logoUrl} alt="Logo" className="w-full h-full object-contain" />
+                            ) : (
+                              <span className="text-xl font-black text-[#133C8B]">EM</span>
+                            )}
+                          </div>
+                          <div>
+                            <h1 className="text-xl font-black text-[#133C8B] uppercase tracking-tight">
+                              Église Missionnaire Mont des Oliviers (EMIMO)
+                            </h1>
+                            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-0.5">
+                              Rapport Statistique des Effectifs & Présences
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right text-xs">
+                          <div className="font-bold text-slate-400">Date du bilan</div>
+                          <div className="font-black text-slate-900 text-sm">{dateCulte}</div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-4 gap-4 text-center">
+                        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                          <div className="text-[10px] font-bold text-slate-500 uppercase">Effectif Total</div>
+                          <div className="text-2xl font-black text-slate-900 mt-1">{totalMembres}</div>
+                        </div>
+                        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                          <div className="text-[10px] font-bold text-slate-500 uppercase">Baptisés</div>
+                          <div className="text-2xl font-black text-emerald-700 mt-1">{totalBaptises} ({tauxBapteme}%)</div>
+                        </div>
+                        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                          <div className="text-[10px] font-bold text-slate-500 uppercase">Couples Mariés</div>
+                          <div className="text-2xl font-black text-[#133C8B] mt-1">{membres.filter(m => m.etat_civil === 'Marié(e)').length}</div>
+                        </div>
+                        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                          <div className="text-[10px] font-bold text-slate-500 uppercase">Enfants</div>
+                          <div className="text-2xl font-black text-amber-700 mt-1">{totalEnfants}</div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h3 className="text-xs font-black uppercase tracking-wider text-[#133C8B] mb-3">
+                          1. Répartition et Assiduité par Blocs (Cellules)
+                        </h3>
+                        <table className="w-full text-left border-collapse text-xs">
+                          <thead>
+                            <tr className="bg-slate-100 border-y border-slate-300 text-slate-700">
+                              <th className="py-2.5 px-3 font-black">Bloc</th>
+                              <th className="py-2.5 px-3 font-black text-center">Effectif Inscrit</th>
+                              <th className="py-2.5 px-3 font-black text-center">Baptisés</th>
+                              <th className="py-2.5 px-3 font-black text-center">Présents le {dateCulte}</th>
+                              <th className="py-2.5 px-3 font-black text-right">Taux Présence</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200">
+                            {BLOCS.map((b) => {
+                              const list = membres.filter((m) => m.bloc === b.id);
+                              const bap = list.filter((m) => m.baptise).length;
+                              const pres = getPresentsGroupeDate('bloc', b.id, dateCulte);
+                              const taux = list.length ? Math.round((pres / list.length) * 100) : 0;
+                              return (
+                                <tr key={b.id}>
+                                  <td className="py-2.5 px-3 font-bold text-slate-900">{b.id}</td>
+                                  <td className="py-2.5 px-3 text-center font-bold">{list.length}</td>
+                                  <td className="py-2.5 px-3 text-center">{bap}</td>
+                                  <td className="py-2.5 px-3 text-center font-bold text-emerald-700">{pres}</td>
+                                  <td className="py-2.5 px-3 text-right font-black">{taux}%</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div>
+                        <h3 className="text-xs font-black uppercase tracking-wider text-[#133C8B] mb-3">
+                          2. Répartition et Assiduité par Départements
+                        </h3>
+                        <table className="w-full text-left border-collapse text-xs">
+                          <thead>
+                            <tr className="bg-slate-100 border-y border-slate-300 text-slate-700">
+                              <th className="py-2.5 px-3 font-black">Département</th>
+                              <th className="py-2.5 px-3 font-black text-center">Effectif Inscrit</th>
+                              <th className="py-2.5 px-3 font-black text-center">Baptisés</th>
+                              <th className="py-2.5 px-3 font-black text-center">Présents le {dateCulte}</th>
+                              <th className="py-2.5 px-3 font-black text-right">Taux Présence</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200">
+                            {DEPARTEMENTS.map((dept) => {
+                              const list = membres.filter((m) => m.departement === dept);
+                              const bap = list.filter((m) => m.baptise).length;
+                              const pres = getPresentsGroupeDate('departement', dept, dateCulte);
+                              const taux = list.length ? Math.round((pres / list.length) * 100) : 0;
+                              return (
+                                <tr key={dept}>
+                                  <td className="py-2.5 px-3 font-bold text-slate-900">{dept}</td>
+                                  <td className="py-2.5 px-3 text-center font-bold">{list.length}</td>
+                                  <td className="py-2.5 px-3 text-center">{bap}</td>
+                                  <td className="py-2.5 px-3 text-center font-bold text-emerald-700">{pres}</td>
+                                  <td className="py-2.5 px-3 text-right font-black">{taux}%</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="pt-8 grid grid-cols-2 gap-8 text-xs text-slate-600">
+                        <div>
+                          <div className="font-bold">Le Secrétariat Administratif</div>
+                          <div className="h-14 border-b border-dashed border-slate-300 mt-2"></div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-bold">Visa de la Direction / Pasteur</div>
+                          <div className="h-14 border-b border-dashed border-slate-300 mt-2"></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </main>
+
+          {carteMembre && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+              <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden border border-slate-100 flex flex-col">
+                <div id="zone-impression-carte" className="p-6 bg-gradient-to-br from-[#0F2C67] to-[#133C8B] text-white flex flex-col items-center text-center relative">
+                  <div className="text-[10px] font-bold tracking-widest text-blue-200 uppercase">EMIMO</div>
+                  <div className="text-xs font-black tracking-wider mb-4">Carte Officielle de Fidèle</div>
+
+                  <div className="w-20 h-20 rounded-2xl bg-white/10 border-2 border-white/20 flex items-center justify-center font-black text-xl mb-3 overflow-hidden shadow-lg">
+                    {carteMembre.photo ? (
+                      <img src={carteMembre.photo} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      getInitiales(carteMembre.nom_complet)
+                    )}
+                  </div>
+
+                  <h3 className="text-base font-black tracking-wide">{carteMembre.nom_complet}</h3>
+                  <div className="text-[11px] font-bold text-blue-200 mt-0.5">{carteMembre.bloc}</div>
+                  <div className="text-[10px] bg-white/10 px-2.5 py-0.5 rounded-full mt-1">{carteMembre.departement}</div>
+
+                  <div className="my-4 bg-white p-2 rounded-2xl shadow-md">
+                    <QrCodeBox size={90} value={`EMIMO|${carteMembre.matricule}|${carteMembre.nom_complet}|${carteMembre.bloc}`} />
+                  </div>
+
+                  <div className="text-[10px] font-mono text-blue-200 tracking-wider">{carteMembre.matricule}</div>
+                </div>
+
+                <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between no-print">
+                  <button
+                    onClick={() => setCarteMembre(null)}
+                    className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 cursor-pointer"
+                  >
+                    Fermer
+                  </button>
+                  <button
+                    onClick={() => window.print()}
+                    className="px-5 py-2.5 rounded-xl bg-[#133C8B] hover:bg-[#0F2C67] text-white text-xs font-bold shadow-sm cursor-pointer"
+                  >
+                    Imprimer la carte
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {modalAjout && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+              <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]">
+                <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                  <h3 className="text-base font-black text-slate-900">
+                    {session.role === 'groupe' ? `Inscrire dans ${session.nom}` : 'Enregistrer un Nouveau Fidèle'}
+                  </h3>
+                  <button onClick={() => setModalAjout(false)} className="w-8 h-8 rounded-full bg-slate-200 text-slate-600 font-bold hover:bg-slate-300 cursor-pointer">✕</button>
+                </div>
+
+                <form onSubmit={handleCreer} className="p-6 overflow-y-auto space-y-4 flex-1 text-xs">
+                  {erreurDoublon && (
+                    <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl font-bold">
+                      {erreurDoublon}
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-4">
+                    <div
+                      onClick={() => photoRef.current?.click()}
+                      className="w-16 h-16 rounded-full bg-slate-100 border-2 border-dashed border-slate-300 flex items-center justify-center cursor-pointer overflow-hidden shrink-0 font-bold text-slate-500 hover:border-[#133C8B]"
+                    >
+                      {formData.photo ? <img src={formData.photo} alt="" className="w-full h-full object-cover" /> : '+ Photo'}
+                    </div>
+                    <input ref={photoRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleImage(e, 'add')} />
+                    <div>
+                      <span className="font-bold text-slate-700 block">Photo d’identité (optionnelle)</span>
+                      <span className="text-slate-500">Apparaîtra sur la fiche et la carte QR du membre.</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-600 mb-1">Nom complet *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ex: Patrick Kabongo"
+                      value={formData.nom_complet}
+                      onChange={(e) => setFormData({ ...formData, nom_complet: e.target.value })}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-[#133C8B] outline-none"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block font-bold text-slate-600 mb-1">Téléphone</label>
+                      <input
+                        type="tel"
+                        placeholder="+243 970 000 000"
+                        value={formData.telephone}
+                        onChange={(e) => setFormData({ ...formData, telephone: e.target.value })}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-[#133C8B] outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-600 mb-1">Quartier / Commune</label>
+                      <input
+                        type="text"
+                        placeholder="Ex: Commune de Panda"
+                        value={formData.quartier}
+                        onChange={(e) => setFormData({ ...formData, quartier: e.target.value })}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-[#133C8B] outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block font-bold text-slate-600 mb-1">Bloc d’appartenance</label>
+                      <select
+                        disabled={session.role === 'groupe' && session.type === 'bloc'}
+                        value={formData.bloc}
+                        onChange={(e) => setFormData({ ...formData, bloc: e.target.value })}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm bg-white disabled:bg-slate-100 disabled:text-slate-500"
+                      >
+                        {BLOCS.map((b) => (
+                          <option key={b.id} value={b.id}>{b.id}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-600 mb-1">Département</label>
+                      <select
+                        disabled={session.role === 'groupe' && session.type === 'departement'}
+                        value={formData.departement}
+                        onChange={(e) => setFormData({ ...formData, departement: e.target.value })}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm bg-white disabled:bg-slate-100 disabled:text-slate-500"
+                      >
+                        {DEPARTEMENTS.map((d) => (
+                          <option key={d} value={d}>{d}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block font-bold text-slate-600 mb-1">État civil</label>
+                      <select
+                        value={formData.etat_civil}
+                        onChange={(e) => setFormData({ ...formData, etat_civil: e.target.value })}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm bg-white"
+                      >
+                        <option value="Célibataire">Célibataire</option>
+                        <option value="Marié(e)">Marié(e)</option>
+                        <option value="Veuf(ve)">Veuf(ve)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-600 mb-1">Nombre d’enfants</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={formData.enfants}
+                        onChange={(e) => setFormData({ ...formData, enfants: e.target.value })}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm"
+                      />
+                    </div>
+                    <div className="flex flex-col justify-end">
+                      <label className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.baptise}
+                          onChange={(e) => setFormData({ ...formData, baptise: e.target.checked })}
+                          className="w-4 h-4 accent-[#133C8B]"
+                        />
+                        <span className="font-bold text-slate-700">Baptisé(e)</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
+                    <button type="button" onClick={() => setModalAjout(false)} className="px-4 py-2.5 rounded-xl font-bold text-slate-600 hover:bg-slate-100 cursor-pointer">
+                      Annuler
+                    </button>
+                    <button type="submit" className="px-5 py-2.5 rounded-xl bg-[#133C8B] hover:bg-[#0F2C67] text-white font-bold shadow-sm cursor-pointer">
+                      Enregistrer
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {membreActif && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+              <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]">
+                <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                  <div>
+                    <h3 className="text-base font-black text-slate-900">
+                      {modeEdition ? 'Modifier la fiche' : 'Fiche du Fidèle'}
+                    </h3>
+                    <div className="text-xs text-slate-500 font-bold">{membreActif.matricule}</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {!modeEdition && (
+                      <button
+                        onClick={() => {
+                          setEditData(membreActif);
+                          setModeEdition(true);
+                          setErreurDoublon('');
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-blue-50 text-[#133C8B] text-xs font-bold hover:bg-blue-100 cursor-pointer"
+                      >
+                        Modifier
+                      </button>
+                    )}
+                    <button
+                      onClick={() => { setMembreActif(null); setModeEdition(false); }}
+                      className="w-8 h-8 rounded-full bg-slate-200 text-slate-600 font-bold hover:bg-slate-300 cursor-pointer flex items-center justify-center"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+
+                {erreurDoublon && (
+                  <div className="m-4 mb-0 p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-bold">
+                    {erreurDoublon}
+                  </div>
+                )}
+
+                {!modeEdition ? (
+                  <div className="p-6 overflow-y-auto space-y-5 flex-1 text-xs">
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center font-black text-xl text-slate-600 overflow-hidden border border-slate-200 shrink-0">
+                        {membreActif.photo ? <img src={membreActif.photo} alt="" className="w-full h-full object-cover" /> : getInitiales(membreActif.nom_complet)}
+                      </div>
+                      <div>
+                        <h4 className="text-lg font-black text-slate-900">{membreActif.nom_complet}</h4>
+                        <div className="text-slate-500">{membreActif.telephone || 'Aucun numéro'}</div>
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <span className={`px-2.5 py-0.5 rounded-md font-bold ${getBlocBadge(membreActif.bloc).bg}`}>
+                            {membreActif.bloc}
+                          </span>
+                          {membreActif.baptise && (
+                            <span className="px-2.5 py-0.5 rounded-md font-bold bg-emerald-50 text-emerald-700">Baptisé(e)</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                      <div>
+                        <span className="text-slate-400 block font-medium">Département</span>
+                        <span className="font-bold text-slate-800">{membreActif.departement}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block font-medium">Quartier / Commune</span>
+                        <span className="font-bold text-slate-800">{membreActif.quartier || '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block font-medium">État civil</span>
+                        <span className="font-bold text-slate-800">{membreActif.etat_civil}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block font-medium">Enfants</span>
+                        <span className="font-bold text-slate-800">{membreActif.enfants}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block font-medium">Présences enregistrées</span>
+                        <span className="font-bold text-[#133C8B]">{compterPresencesMembre(membreActif.id)} activité(s)</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block font-medium">Date d’inscription</span>
+                        <span className="font-bold text-slate-800">{membreActif.date_inscription}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2">
+                      {session.role === 'admin' ? (
+                        <button
+                          onClick={() => handleSupprimer(membreActif)}
+                          className="px-3.5 py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold transition cursor-pointer"
+                        >
+                          Supprimer le membre
+                        </button>
+                      ) : (
+                        <span className="text-[10px] text-slate-400">Suppression réservée à l'admin</span>
+                      )}
+                      <button
+                        onClick={() => { setMembreActif(null); setCarteMembre(membreActif); }}
+                        className="px-4 py-2.5 rounded-xl bg-[#133C8B] hover:bg-[#0F2C67] text-white font-bold shadow-sm transition cursor-pointer"
+                      >
+                        Générer la Carte QR
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <form onSubmit={handleModifier} className="p-6 overflow-y-auto space-y-4 flex-1 text-xs">
+                    <div className="flex items-center gap-4">
+                      <div
+                        onClick={() => editPhotoRef.current?.click()}
+                        className="w-16 h-16 rounded-full bg-slate-100 border-2 border-dashed border-slate-300 flex items-center justify-center cursor-pointer overflow-hidden font-bold text-slate-500 hover:border-[#133C8B]"
+                      >
+                        {editData.photo ? <img src={editData.photo} alt="" className="w-full h-full object-cover" /> : 'Photo'}
+                      </div>
+                      <input ref={editPhotoRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleImage(e, 'edit')} />
+                      <span className="font-bold text-slate-600">Cliquer pour changer la photo</span>
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-slate-600 mb-1">Nom complet *</label>
+                      <input
+                        type="text"
+                        required
+                        value={editData.nom_complet || ''}
+                        onChange={(e) => setEditData({ ...editData, nom_complet: e.target.value })}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-[#133C8B]"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block font-bold text-slate-600 mb-1">Téléphone</label>
+                        <input
+                          type="tel"
+                          value={editData.telephone || ''}
+                          onChange={(e) => setEditData({ ...editData, telephone: e.target.value })}
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block font-bold text-slate-600 mb-1">Quartier / Commune</label>
+                        <input
+                          type="text"
+                          value={editData.quartier || ''}
+                          onChange={(e) => setEditData({ ...editData, quartier: e.target.value })}
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block font-bold text-slate-600 mb-1">Bloc</label>
+                        <select
+                          disabled={session.role === 'groupe'}
+                          value={editData.bloc || BLOCS[0].id}
+                          onChange={(e) => setEditData({ ...editData, bloc: e.target.value })}
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm bg-white disabled:bg-slate-100"
+                        >
+                          {BLOCS.map((b) => (
+                            <option key={b.id} value={b.id}>{b.id}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block font-bold text-slate-600 mb-1">Département</label>
+                        <select
+                          disabled={session.role === 'groupe'}
+                          value={editData.departement || DEPARTEMENTS[0]}
+                          onChange={(e) => setEditData({ ...editData, departement: e.target.value })}
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm bg-white disabled:bg-slate-100"
+                        >
+                          {DEPARTEMENTS.map((d) => (
+                            <option key={d} value={d}>{d}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block font-bold text-slate-600 mb-1">État civil</label>
+                        <select
+                          value={editData.etat_civil || 'Célibataire'}
+                          onChange={(e) => setEditData({ ...editData, etat_civil: e.target.value })}
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm bg-white"
+                        >
+                          <option value="Célibataire">Célibataire</option>
+                          <option value="Marié(e)">Marié(e)</option>
+                          <option value="Veuf(ve)">Veuf(ve)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block font-bold text-slate-600 mb-1">Enfants</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={editData.enfants || 0}
+                          onChange={(e) => setEditData({ ...editData, enfants: e.target.value })}
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm"
+                        />
+                      </div>
+                      <div className="flex flex-col justify-end">
+                        <label className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={!!editData.baptise}
+                            onChange={(e) => setEditData({ ...editData, baptise: e.target.checked })}
+                            className="w-4 h-4 accent-[#133C8B]"
+                          />
+                          <span className="font-bold text-slate-700">Baptisé(e)</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
+                      <button type="button" onClick={() => setModeEdition(false)} className="px-4 py-2.5 rounded-xl font-bold text-slate-600 hover:bg-slate-100 cursor-pointer">
+                        Annuler
+                      </button>
+                      <button type="submit" className="px-5 py-2.5 rounded-xl bg-[#133C8B] hover:bg-[#0F2C67] text-white font-bold shadow-sm cursor-pointer">
+                        Enregistrer
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            </div>
+          )}
+
+          {modalStockage && session.role === 'admin' && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+              <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-slate-100 flex flex-col">
+                <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+                  <h3 className="text-base font-black text-slate-900">Sauvegarde & Données (Admin)</h3>
+                  <button onClick={() => setModalStockage(false)} className="w-8 h-8 rounded-full bg-slate-100 font-bold text-slate-600 hover:bg-slate-200 cursor-pointer">✕</button>
+                </div>
+                <div className="p-6 space-y-4 text-xs">
+                  <div>
+                    <h4 className="font-bold text-slate-700 mb-2 uppercase tracking-wider text-[11px]">Sauvegarde complète (JSON)</h4>
+                    <button
+                      onClick={() => {
+                        const dataStr = JSON.stringify({ app: 'EMIMO', date: new Date().toISOString(), membres, presences }, null, 2);
+                        const blob = new Blob([dataStr], { type: 'application/json' });
+                        const url = URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = `EMIMO_Backup_${new Date().toISOString().split('T')[0]}.json`;
+                        link.click();
+                        URL.revokeObjectURL(url);
+                        notify('Sauvegarde JSON téléchargée');
+                      }}
+                      className="w-full py-3 px-4 rounded-xl bg-blue-50 hover:bg-blue-100 text-[#133C8B] font-bold transition flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <span>📥</span> Télécharger le fichier de sauvegarde
+                    </button>
+                  </div>
+
+                  <div>
+                    <h4 className="font-bold text-slate-700 mb-2 uppercase tracking-wider text-[11px]">Importer des membres initiaux (JSON)</h4>
+                    <button
+                      onClick={() => importJsonRef.current?.click()}
+                      className="w-full py-3 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <span>📤</span> Importer vers Firestore
+                    </button>
+                    <input
+                      ref={importJsonRef}
+                      type="file"
+                      accept=".json"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const reader = new FileReader();
+                        reader.onload = async (event) => {
+                          try {
+                            const parsed = JSON.parse(event.target.result);
+                            const liste = Array.isArray(parsed) ? parsed : parsed.membres;
+                            if (!Array.isArray(liste)) throw new Error('Format invalide');
+                            if (window.confirm(`Envoyer ${liste.length} membre(s) vers Firestore ?`)) {
+                              for (const item of liste) {
+                                const { id, ...rest } = item;
+                                await db.collection('membres').add({
+                                  ...rest,
+                                  mis_a_jour_le: new Date().toISOString()
+                                });
+                              }
+                              setModalStockage(false);
+                              notify(`${liste.length} membres envoyés sur Firestore`);
+                            }
+                          } catch {
+                            alert('Fichier de sauvegarde invalide.');
+                          }
+                        };
+                        reader.readAsText(file);
+                        e.target.value = '';
+                      }}
+                    />
+                  </div>
+
+                  <div className="pt-4 border-t border-slate-100">
+                    <h4 className="font-bold text-slate-700 mb-2 uppercase tracking-wider text-[11px]">Données de démonstration</h4>
+                    <button
+                      onClick={async () => {
+                        if (window.confirm('Ajouter les 3 membres exemples initiaux dans Firestore ?')) {
+                          for (const m of INITIAL_MEMBRES) {
+                            const { id, ...rest } = m;
+                            await db.collection('membres').add({
+                              ...rest,
+                              mis_a_jour_le: new Date().toISOString()
+                            });
+                          }
+                          setModalStockage(false);
+                          notify('Membres exemples ajoutés');
+                        }
+                      }}
+                      className="w-full py-3 px-4 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold transition cursor-pointer"
+                    >
+                      Charger les membres exemples
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+</body>
+</html>
